@@ -1,0 +1,14 @@
+190124
+
+-Edit boxes now call the associated buttonpress function on 'return'. 
+-For longitudinal ROIs, click a loaded, excluded ROI and then do a ROI selection (eg select pixel for corr) over it. Press 's' for save.
+-New checkbox in LOAD panel: Import and load rois saved from other sessions. Requires that a unique cellID is used for each cell in filename (eg cell003.mat).
+-New checkbox on projection panel: Display ROIs. Can now check or uncheck to look at FOV with/out ROIs. (IN PROGRESS...)
+
+Modifications of cellROI.m
+
+1.) cellROI now takes a structure or cell 'stack' as input. If struct, then all fields (which can be projections or other data) are copied to the 'handles' structure in the GUI. that way data can be loaded ahead of time...
+
+2.) All use of globals has been eliminated in favor of using the built-in 'handles' structure for user data.
+
+3.) White levels are now adjustable by sliders.
