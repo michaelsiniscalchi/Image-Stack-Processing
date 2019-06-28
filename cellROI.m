@@ -2,12 +2,10 @@
 %PURPOSE: Graphical user interface for selecting regions of interest (ROIs) from motion-corrected calcium imaging data.
 %AUTHORS: MJ Siniscalchi 181105; based on original version by AC Kwan.
 
-%***FUTURE EDITS:'
-%-if checkbox 'loadpriorROI', query whether to re-run screenROIs.m function (make internal fcn?)
+%***FUTURE EDITS:
+%-ASAP: 'roiData' names a function and a local variable in different places...fix!
 %-cellf and neuropilf should now be col vectors...CHECK!
-%-Calc Neuropil: save variable with inner and outer radius
 %-Keypress function (arrows): nudge ROI L-R-U-D using circshift().
-%-Slider for cellID
 
 function varargout = cellROI(varargin)
 %To edit/open this program, use "File --> New --> GUI"
@@ -45,7 +43,7 @@ if numel(varargin)>0
         fields = fieldnames(varargin{1});
         for i = 1:numel(fields)
             handles.(fields{i}) = varargin{1}.(fields{i});
-        end %fields = {'stack','mean_proj','var_proj','max_proj','filename','pathname'};
+        end %fields = {'stack','mean_proj','var_proj','max_proj','filename'};
     end
 end
 
@@ -94,16 +92,17 @@ function handles = loadImageStack(handles)
 handles.save_dir = fullfile(handles.pathname,strcat('ROI_',handles.filename)); %Path for save directory
 roiData_fname = fullfile(handles.save_dir,'roiData.mat');
 if exist(roiData_fname,'file')
-    S = load(roiData_fname);
+    S = load(roiData_fname,'stack','max_proj','mean_proj','var_proj');
     disp(['Loading saved data from ' roiData_fname ':']);
-    fields = fieldnames(S);
+    
+    fields = fieldnames(S); 
     disp(fields);
     for i = 1:numel(fields)
         handles.(fields{i}) = S.(fields{i}); %fields = {'stack','mean_proj','var_proj','max_proj',...};
     end
 else
     mkdir(handles.save_dir); %Setup subdir for saving files
-    S = struct('filename',handles.filename,'pathname',handles.pathname);
+    S = struct('filename',handles.filename);
     save(roiData_fname,'-struct','S','-v7.3');
 end
 
