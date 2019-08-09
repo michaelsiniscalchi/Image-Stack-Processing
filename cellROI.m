@@ -4,7 +4,6 @@
 
 %***FUTURE EDITS:
 %-ASAP: 'roiData' names a function and a local variable in different places...fix!
-%-cellf and neuropilf should now be col vectors...CHECK!
 %-Keypress function (arrows): nudge ROI L-R-U-D using circshift().
 
 function varargout = cellROI(varargin)
@@ -89,7 +88,8 @@ refresh_Axis((1:4),handles); %Refresh left & right axes
 function handles = loadImageStack(handles)
 
 %Check for saved data file roiData.mat
-handles.save_dir = fullfile(handles.pathname,strcat('ROI_',handles.filename)); %Path for save directory
+handles.save_dir = fullfile(handles.pathname,'..',...       %Parent of dir containing handles.pathname
+    strcat('ROI_',handles.filename));                       %Path for ROI directory
 roiData_fname = fullfile(handles.save_dir,'roiData.mat');
 if exist(roiData_fname,'file')
     S = load(roiData_fname,'stack','max_proj','mean_proj','var_proj');
@@ -113,7 +113,7 @@ if ~isfield(handles,'stack')
 end
 
 %Calculate mean, max, and variance projections to aid in ROI selection
-if ~isfield(handles,'var_proj')
+if ~isfield(handles,'var_proj'), tic;
     handles.text_stackSize.String = 'Getting projections...';
     disp('Getting mean projection...');
     handles.mean_proj = mean(handles.stack,3);
@@ -122,7 +122,7 @@ if ~isfield(handles,'var_proj')
     handles.var_proj = squeeze(var(handles.stack,0,1));
     handles.stack = permute(handles.stack,[2,3,1]); %Time-dimension back to D3
     disp('Getting maximum projection...');
-    handles.max_proj = max(handles.stack,[],3);
+    handles.max_proj = max(handles.stack,[],3); toc
     %Save projections in roiData.mat
     disp(['Saving all projections in ' roiData_fname '...']);
     S = struct('mean_proj',handles.mean_proj,'var_proj',handles.var_proj,...
@@ -552,8 +552,9 @@ elseif strcmpi(keyPressed,'c') %Draw ROI with previous pushbutton callback funct
     pushbutton_selectCircle_Callback(handles.pushbutton_selectCircle, [], handles);
 elseif strcmpi(keyPressed,'x') %Draw ROI with previous pushbutton callback function
     pushbutton_selectCorrPixel_Callback(handles.pushbutton_selectCorrPixel, [], handles);
-elseif strcmpi(keyPressed,'z') %Draw ROI with previous pushbutton callback function
-    pushbutton_selectPolygon_Callback(handles.pushbutton_selectPolygon, [], handles);
+elseif strcmpi(keyPressed,'e') %Draw ROI with previous pushbutton callback function
+    handles.togglebutton_excludeROI.Value = abs(handles.togglebutton_excludeROI.Value-1); %Toggle button on/off
+    togglebutton_excludeROI_Callback(handles.togglebutton_excludeROI, [], handles);
 elseif strcmpi(keyPressed,'delete') || strcmpi(keyPressed,'d')%Delete ROI data
     pushbutton_delROI_Callback(handles.pushbutton_delROI,[],handles); %DELETE ROI
 elseif (strcmpi(keyPressed,'uparrow') || strcmpi(keyPressed,'downarrow'))...
@@ -572,6 +573,8 @@ if strcmp(handles.figure1.SelectionType,'alt')
     if isfield(handles,'ref_fig') && isfield(handles.ref_fig,'figure')
         handles = delete_refFig(handles); %Close ref fig
     end
+    [handles, ~] = nxtCellID(handles); %Increment cell ID
+    
     guidata(hObject,handles);
     try refresh_Axis(1:4,handles); end %Try is used to avoid error in case user clicks before loading imaging data
 end
@@ -736,6 +739,7 @@ img = whiteLevel .* (img./max(img(:))) * 256; %Normalize to max pixel value; 256
 function refresh_Axis(axis_ID,handles) %axis_ID is a vector of integer values, range: (1:4).
 
 ax = {'axes1','axes2','axes3','axes4'}; %Fieldnames for all axes in handles structure
+currIdx = 0; %Current cell ID
 for i = axis_ID %Set of int axes_IDs passed to function
     
     %For each axis
@@ -743,7 +747,6 @@ for i = axis_ID %Set of int axes_IDs passed to function
     handles.(ax{i}).TickLength = [0.001 0.01];
     handles.(ax{i}).FontSize = 10;
     hold(handles.(ax{i}),'on'); %Hold on
-    currIdx = 0; %Current cell ID
     
     %Axes1 and Axes2 (FOV axes)
     if ismember(ax{i},{'axes1','axes2'})
@@ -783,19 +786,20 @@ for i = axis_ID %Set of int axes_IDs passed to function
                     'FaceColor','c','EdgeColor','none','FaceAlpha',0.2);
             end
         end
+        
     elseif strcmp(ax{i},'axes3') %Refresh axes3 (dF/F plot)
         cellf = NaN(size(handles.stack,3),1);
         if ~isempty(handles.curr_cellf)
             cellf = handles.curr_cellf;
         end
-        if currIdx && ~isempty(handles.neuropilf) %Plot neuropil signal as dF/F
-            npf = handles.neuropilf{currIdx};
-            plot(handles.axes3,(1:length(npf)),(npf-median(npf)) / median(cellf),'c'); %Same scale as cellF
-        end
         plot(handles.axes3,(1:length(cellf)),... %Plot cell dF/F
             (cellf-median(cellf)) / median(cellf),'k','LineWidth',1);
         axis(handles.axes3,'tight');
         xlim(handles.axes3,[0 length(cellf)]);
+        if currIdx && ~isempty(handles.neuropilf) %Plot neuropil signal as dF/F
+            npf = handles.neuropilf{currIdx};
+            plot(handles.axes3,(1:length(npf)),(npf-median(npf)) / median(cellf),'c'); %Same scale as cellF
+        end
         
     elseif strcmp(ax{i},'axes4') %Refresh axes4 (Pearson's R histogram)
         %Nothing yet!
