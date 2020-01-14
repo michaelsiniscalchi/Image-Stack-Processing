@@ -1,10 +1,16 @@
-%%cellROI v2
-%PURPOSE: Graphical user interface for selecting regions of interest (ROIs) from motion-corrected calcium imaging data.
-%AUTHORS: MJ Siniscalchi 181105; based on original version by AC Kwan.
-
+%%% cellROI v2
+% PURPOSE: Graphical user interface for selecting regions of interest (ROIs) from motion-corrected calcium imaging data.
+% AUTHORS: MJ Siniscalchi 181105; based on original version by AC Kwan.
+%
 %***FUTURE EDITS:
+%-Use dispRelFluo function from selectROI() to implement neuropil masks...
+%-Allow dispRelFluo to be called by select circle function as well...
 %-ASAP: 'roiData' names a function and a local variable in different places...fix!
+%-Get rid of Checkbox: 'repeat ROI selection after save'
 %-Keypress function (arrows): nudge ROI L-R-U-D using circshift().
+%-Uses of histc --> histcounts
+%
+%---------------------------------------------------------------------------------------------------
 
 function varargout = cellROI(varargin)
 %To edit/open this program, use "File --> New --> GUI"
@@ -88,7 +94,7 @@ refresh_Axis((1:4),handles); %Refresh left & right axes
 function handles = loadImageStack(handles)
 
 %Check for saved data file roiData.mat
-handles.save_dir = fullfile(handles.pathname,'..',...       %Parent of dir containing handles.pathname
+handles.save_dir = fullfile(handles.pathname,... 
     strcat('ROI_',handles.filename));                       %Path for ROI directory
 roiData_fname = fullfile(handles.save_dir,'roiData.mat');
 if exist(roiData_fname,'file')
@@ -221,8 +227,6 @@ r = str2double(get(handles.edit_circRadius,'String'));
 handles.cellMask = sqrt((rr-X).^2+(cc-Y).^2)<=r; %Get grids within circle radius
 %Store cellF and patch vertices in memory
 [handles.curr_ROI, handles.curr_cellf] = roiData(handles);
-%Store function handle  and uiobject for last select (circle, poly, or pixel correlation)
-handles.lastSelFunc = {@pushbutton_selectCircle_Callback, handles.pushbutton_selectCircle};
 
 guidata(hObject, handles); %Save user data
 refresh_Axis((1:3),handles); %Display patch and corresponding DFF
@@ -240,13 +244,10 @@ handles.cellMask = roipoly; %Get logical mask approximation of polygon drawn by 
 %Display patch and corresponding DFF
 [handles.curr_ROI, handles.curr_cellf] = roiData(handles); %Store cellF and patch vertices in memory
 
-%Store function handle and uiobject for last select (circle, poly, or pixel correlation)
-handles.lastSelFunc = {@pushbutton_selectPolygon_Callback, handles.pushbutton_selectPolygon};
-
 refresh_Axis((1:3),handles); %Refresh left & right axes
 guidata(hObject, handles); %Save user data
 
-%--- PUSHBUTTON: SELECT PIXEL for XCorr (executes on corresponding button press)
+%--- PUSHBUTTON: SELECT PIXEL for correlation (executes on corresponding button press)
 function pushbutton_selectCorrPixel_Callback(hObject, eventdata, handles)
 
 %Refresh axes
@@ -260,12 +261,9 @@ refresh_Axis((1:4),handles);
 pushbutton_recalcCorr_Callback(handles.pushbutton_recalcCorr,eventdata,handles); %Callback function for 'Recalc' pushbutton
 handles = guidata(hObject); %Expicitly set handles assigned by callback function for different uicontrol
 
-%Store function handle and uiobject for last select (circle, poly, or pixel correlation)
-handles.lastSelFunc = {@pushbutton_selectCorrPixel_Callback, handles.pushbutton_selectCorrPixel};
-
 guidata(hObject, handles); %Save user data
 
-%--- PUSHBUTTON: RECALC cross-correlation (executes on corresponding button press)
+%--- PUSHBUTTON: RECALC pixel correlation (executes on corresponding button press)
 %    note: also performs initial calculation after pushbutton SELECT PIXEL is pressed.
 function pushbutton_recalcCorr_Callback(hObject, eventdata, handles)
 
@@ -344,13 +342,13 @@ save(fullfile(handles.save_dir,save_name),'-struct','S');
 %Store data in structure
 idx = str2double(handles.edit_cellID.String); %Edit box can be changed by function getSaveName(handles,idx)
 handles.roi{idx} = handles.curr_ROI; %Store vertices of current ROI patch
+handles.cellMasksAll(:,:,idx) = handles.cellMask; %3D array of logical masks: nY x nX x nROIs
 handles.cellf{idx} = handles.curr_cellf; %Store cellF from current ROI patch
 if ~isempty(handles.curr_cellf)
     handles.excludeROI(idx) = false; %Restore default, eg when transferring longitudinal ROIs
 end
 
 handles.save_names{idx} = save_name; %Store save_name
-
 [handles,~] = nxtCellID(handles); %Increment cell ID
 
 %Refresh axes
@@ -407,11 +405,11 @@ for i = 1:numel(handles.save_names)
     try
         S = load(fullfile(handles.save_dir,handles.save_names{i}),...
             'bw','cellf','subtractmask','neuropilf'); %s.bw is logical mask
-        if handles.checkbox_loadNeuropilData.Value && isfield(S,'neuropilf')
+        if handles.checkbox_loadNeuropilData.Value && isfield(S,'subtractmask')
             handles.neuropilf{i} = S.neuropilf;         %Get saved neuropil data
             handles.npPoly(i) = getNpPoly(S.subtractmask); %Generate polygon representation (graphics object)
         end
-        
+        handles.cellMasksAll(:,:,i) = S.bw; %3D array of logical masks: nY x nX x nROIs
         bounds = bwboundaries(S.bw); %Generate polygon representation of each cell mask
         handles.roi{i} = [bounds{1}(:,2) bounds{1}(:,1)]; %ROI coordinates in xy
     catch err
@@ -448,6 +446,8 @@ if strcmp(A,'Ok')
     %Clear ROI data
     handles.roi{idx} = [];
     handles.cellf{idx} = [];
+    handles.cellMasksAll(:,:,idx) = ...
+        false(size(handles.stack,1),size(handles.stack,2)); %3D array of logical masks: nY x nX x nROIs
     handles.curr_ROI = [];
     handles.curr_cellf = [];
     handles.excludeROI(idx) = false;
@@ -465,9 +465,13 @@ refresh_Axis((1:4),handles); %Refresh left & right axes
 % --- TOGGLEBUTTON: EXCLUDE (Executes on button press in togglebutton_excludeROI.)
 function togglebutton_excludeROI_Callback(hObject, eventdata, handles)
 
-idx = str2double(handles.edit_cellID.String);
-S = load(fullfile(handles.save_dir,handles.save_names{idx}),'bw');
-handles.cellMask = S.bw;
+idx = str2double(handles.edit_cellID.String); %Get cell ID
+
+if isempty(handles.cellMask)
+    S = load(fullfile(handles.save_dir,handles.save_names{idx}),'bw');
+    handles.cellMask = S.bw;
+end
+
 handles.check_overwrite = false;
 if hObject.Value == hObject.Max
     handles.excludeROI(idx) = true; %For refreshing ROI mask
@@ -478,6 +482,8 @@ elseif hObject.Value == hObject.Min
     [~, handles.curr_cellf] = roiData(handles); %Get cellf and save to .MAT file
 end
 pushbutton_savetraces_Callback(handles.pushbutton_saveCellF, [], handles);  %Update .MAT file
+
+handles.togglebutton_excludeROI.Value = handles.togglebutton_excludeROI.Min; %Toggle button off
 
 handles = guidata(hObject); %Explicitly repopulate userdata struct after calling pushbutton functions
 guidata(hObject, handles);  %Save user data
@@ -546,8 +552,6 @@ function figure1_WindowKeyPressFcn(hObject, eventdata, handles)
 keyPressed = eventdata.Key; %Determine the key that was pressed
 if strcmpi(keyPressed,'s') %Save ROI and associated cellF
     pushbutton_savetraces_Callback(handles.pushbutton_saveCellF,[],handles);
-elseif strcmpi(keyPressed,'a') %Draw ROI with previous pushbutton callback function
-    feval(handles.lastSelFunc{1},handles.lastSelFunc{2},[],handles);
 elseif strcmpi(keyPressed,'c') %Draw ROI with previous pushbutton callback function
     pushbutton_selectCircle_Callback(handles.pushbutton_selectCircle, [], handles);
 elseif strcmpi(keyPressed,'x') %Draw ROI with previous pushbutton callback function
@@ -566,9 +570,12 @@ end
 
 %--- WINDOW BUTTONDOWN FUNCTION (executes on mouse click with focus on cellROI.fig) ---
 function figure1_WindowButtonDownFcn(hObject, eventdata, handles)
-%disp(eventdata);
+
 if strcmp(handles.figure1.SelectionType,'alt')
     handles.curr_ROI = [];
+    handles.cellMask = [];
+    handles.togglebutton_excludeROI.Value = handles.togglebutton_excludeROI.Min; %Toggle button off
+    
     %If using reference figs for longitudinal ROI selection
     if isfield(handles,'ref_fig') && isfield(handles.ref_fig,'figure')
         handles = delete_refFig(handles); %Close ref fig
@@ -687,7 +694,6 @@ end
 function handles = initUserData(handles)
 
 handles.cmap = colormap(repmat(linspace(0,1,256)',1,3)); %Gray color map for imaging data
-handles.lastSelFunc = {}; %Stores function handle for last select (circle, poly, or pixel correlation)
 handles.roi = {}; %Cell array containing vertices of all ROIs
 handles.cellf = {}; %Cell array containing mean cellular fluorescence for each ROI
 handles.curr_ROI = []; %Vertices of current ROI patch
@@ -835,8 +841,48 @@ handles.curr_cellf = handles.cellf{idx}; %Set corresponding cellF as current cel
 handles.edit_cellID.String = num2str(idx); %Make ROI idx current
 handles.togglebutton_excludeROI.Value = handles.excludeROI(idx); %Update state of toggle button
 
+%Update logical mask for current ROI
+handles.cellMask = handles.cellMasksAll(:,:,idx); 
+
+%Display approximate radius in pixels
 R = ceil(radius*2)/2; %Radius with resolution of 0.5 pixels
-handles.edit_circRadius.String = num2str(R); %Display approximate radius in pixels
+handles.edit_circRadius.String = num2str(R); 
+
+%Display distribution of mean pixel intensity for current ROI vs. surround
+[Y,X] = find(handles.cellMasksAll(:,:,idx));
+centroid.X = mean(X); 
+centroid.Y = mean(Y);
+R(1) = str2double(handles.edit_calcNeuropil_Ri.String); %Number of cell radii for inner diameter
+R(2) = str2double(handles.edit_calcNeuropil_Ro.String); %Number of cell radii for outer diameter
+for j = 1:2
+    [X,Y] = meshgrid(1:size(handles.stack,2),1:size(handles.stack,1)); %Get grids within R(j) cell radii of centroid
+    circle{j} = sqrt((X - centroid.X).^2 + (Y - centroid.Y).^2)...
+        <= R(j) * radius;   %Inner or outer radius of annulus in units of cell radius
+end
+%Get logical masks for current ROI, all other ROIs, and surround
+temp = true(size(handles.cellMasksAll,3),1);
+temp(idx) = false; %Idx for all except current cell mask
+otherCellMask = logical(sum(handles.cellMasksAll(:,:,temp),3)); %Mask for all saved ROIs except current
+cellMask = handles.cellMasksAll(:,:,idx) & ~otherCellMask;
+surroundMask = circle{2} & ~(circle{1} | cellMask | otherCellMask); %Mask for circular region surrounding ROI, excluding inner circle and somata mask
+
+%Plot histogram of mean pixel intensity
+cla(handles.axes4);
+hold(handles.axes4,'on');
+F_cellMask = mean(handles.max_proj(cellMask)); %Grand mean fluorescence within current ROI
+F_surround = handles.max_proj(surroundMask);   %Mean fluorescence for each pixel in surround
+[counts,edges] = histcounts(F_surround);
+bar(handles.axes4,edges(1:end-1),counts,'histc');
+plot(handles.axes4,[F_cellMask F_cellMask],[0 1.1*max(counts)],'r','LineWidth',1);
+title(handles.axes4,'Hist of max intensity for surrounding pixels');
+set(get(handles.axes4,'title'),'Units','normalized','Position',[0.5,0.95,0]);
+
+temp = [edges,F_cellMask];
+rel_F = (F_cellMask - mean(F_surround))/mean(F_surround);
+text(handles.axes4,max(temp),max(counts),num2str(rel_F,3));
+xlim(handles.axes4,[min(temp),1.2*max(temp)]);
+ylim(handles.axes4,[0,1.1*max(counts)]); %ylim set to 1.1 * maximum count
+%-----------
 
 %If checkbox 'Import prior ROIs' checked, popup figure with prior ROIs
 if handles.checkbox_ImportROIs.Value
