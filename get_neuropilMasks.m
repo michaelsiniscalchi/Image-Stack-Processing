@@ -11,7 +11,6 @@ subtractmask_all = false(size(S.bw));
 centroid = struct('X',cell(numel(roiFile),1),'Y',cell(numel(roiFile),1)); %Initialize
 r_ROI = NaN(numel(roiFile),1);
 
-
 for i = 1:numel(roiFile)
     S = load(fullfile(roiFile(i).folder,roiFile(i).name),'bw'); %s.bw is logical mask for ROI
     [Y,X] = find(S.bw);
