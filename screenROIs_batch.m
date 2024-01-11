@@ -9,9 +9,9 @@
 clearvars;
 
 %Params
-data_dir = 'C:\Users\Michael\Documents\Data & Analysis\Rule Switching';
-subject_ID = {'M57','M58','M59','M60','M61'}; %User enters subject name, or other string to use as filter for dirs to search
-segWidth = 40; %width of viewing box in pixels
+data_dir = 'X:\michael\network-batch\registered';
+subject_ID = {'M413'}; %User enters subject name, or other string to use as filter for dirs to search
+segWidth = 80; %width of viewing box in pixels
 
 for j = 1:numel(subject_ID)
     %Search for ROI directories
@@ -20,17 +20,19 @@ for j = 1:numel(subject_ID)
         dirs.sessions{i,:} = fullfile(data_dir,temp(i).name);
     end
     
+    
     % MAT file to save all ROIs from a given subject
     master_file = fullfile(data_dir,['master_rois_' subject_ID{j} '.mat']); %Master ROI file
-    
-    for i=1:numel(dirs.sessions)
+
+    for i = 1:numel(dirs.sessions)
         temp = dir(fullfile(dirs.sessions{i},'ROI*.tif'));
         temp = temp(temp.isdir); %Get only the directories
         if ~isempty(temp)
-            dirs.roi{i,:} = fullfile(dirs.sessions{i},temp.name);
+            dirs.roi(i,:) = string(fullfile(dirs.sessions{i},temp.name));
         end
     end
-    
+    dirs.roi = dirs.roi(~ismissing(dirs.roi)); %Filter sessions with ROIs
+
     %Get mean projection from each imaging session
     for i = 1:numel(dirs.roi)
         S = load(fullfile(dirs.roi{i},'roiData.mat'),'mean_proj','filename');

@@ -551,10 +551,12 @@ function figure1_WindowKeyPressFcn(hObject, eventdata, handles)
 keyPressed = eventdata.Key; %Determine the key that was pressed
 if strcmpi(keyPressed,'s') %Save ROI and associated cellF
     pushbutton_savetraces_Callback(handles.pushbutton_saveCellF,[],handles);
-elseif strcmpi(keyPressed,'c') %Draw ROI with previous pushbutton callback function
+elseif strcmpi(keyPressed,'c') %Draw ROI with 'draw circle' callback function
     pushbutton_selectCircle_Callback(handles.pushbutton_selectCircle, [], handles);
-elseif strcmpi(keyPressed,'x') %Draw ROI with previous pushbutton callback function
+elseif strcmpi(keyPressed,'x') %Draw ROI with pixel correlation callback function
     pushbutton_selectCorrPixel_Callback(handles.pushbutton_selectCorrPixel, [], handles);
+elseif strcmpi(keyPressed,'z') %Draw ROI with 'draw polygon callback function
+    pushbutton_selectPolygon_Callback(handles.pushbutton_selectPolygon, [], handles);
 elseif strcmpi(keyPressed,'e') %Draw ROI with previous pushbutton callback function
     handles.togglebutton_excludeROI.Value = abs(handles.togglebutton_excludeROI.Value-1); %Toggle button on/off
     togglebutton_excludeROI_Callback(handles.togglebutton_excludeROI, [], handles);
@@ -948,10 +950,23 @@ end
 %--- SAVE FULL FOV REFERENCE IMAGE WITH ROIS ------------------------------
 %   -Can be used eg for longitudinal imaging
 function saveRefImg(handles)
-f = figure('Visible','off');
-ax = copyobj(handles.axes2,f); ax.XLim = [0 256]; ax.YLim = [0 256]; %Need to add cellIDs...
-set(f,'Position',[300, 300, 300, 300]);
-set(ax,'Units','pixels','Position',[0, 0, 256, 256],'LooseInset',[0,0,0,0]);
+%Plot all ROIs
+f = figure('Visible','off','Position',[100, 100, size(handles.stack,1), size(handles.stack,2)]);
+ax = copyobj(handles.axes2,f); 
+ax.YLim = [0 size(handles.stack,1)];
+ax.XLim = [0 size(handles.stack,2)]; 
+%Label with cellIDs
+for i = 1:numel(handles.save_names)
+    if isempty(handles.save_names{i}) 
+        continue 
+    else
+    saveNum = join(string(regexp(handles.save_names{i},'\d','match')),'');
+    pos = mean(handles.roi{i}); 
+    text(pos(1),pos(2),saveNum,"HorizontalAlignment","center","Color",'c');
+    end
+end
+%Write image to file
+set(ax,'Units','pixels','Position',[0, 0, ax.YLim(2), ax.XLim(2)],'LooseInset',[0,0,0,0]);
 img = getframe(ax);
 imwrite(img.cdata,fullfile(handles.save_dir,'ROI_Image.tif'),'tif');
 

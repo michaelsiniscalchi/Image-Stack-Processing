@@ -9,9 +9,9 @@
 clearvars;
 
 %% User Must Set Params
-subject_ID = 'M53'; %User enters subject name, or other string to use as filter for dirs to search
-data_dir = 'J:\Data & Analysis\Sensorimotor Learning\data';
-segWidth = 40; %width of viewing box in pixels
+subject_ID = 'M105'; %User enters subject name, or other string to use as filter for dirs to search
+data_dir = 'S:\mjs20\rois';
+segWidth = 100; %width of viewing box in pixels
 
 %% Locate ROI data and Time-Projections from all Sessions from Specified Subject
 
